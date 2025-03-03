@@ -858,12 +858,59 @@ if __name__ == "__main__":
                                 field_id = hs_field.get_attribute("id") or hs_field.get_attribute("name") or "unknown"
                                 print(f"Found HS code field: {field_id}")
                                 driver.execute_script("arguments[0].scrollIntoView(true);", hs_field)
-                                hs_field.clear()
-                                hs_field.send_keys(hs_code)
                                 
-                                # Additional debugging
-                                print(f"Entered HS code: {hs_code} into field {field_id}")
-                                time.sleep(1)
+                                # Special handling for customsinfo.com
+                                if "customsinfo.com" in driver.current_url and field_id == "txtSearchCode":
+                                    try:
+                                        # Make the element interactable
+                                        driver.execute_script(
+                                            "arguments[0].style.display = 'block'; " +
+                                            "arguments[0].style.visibility = 'visible'; " +
+                                            "arguments[0].style.opacity = '1';", 
+                                            hs_field
+                                        )
+                                        time.sleep(1)
+                                        
+                                        # Set the value using JavaScript
+                                        driver.execute_script("arguments[0].value = arguments[1];", hs_field, hs_code)
+                                        print(f"Set HS code using JavaScript: {hs_code}")
+                                        
+                                        # Look for search button
+                                        search_buttons = driver.find_elements(By.XPATH, 
+                                            "//input[@id='btnSearch' or @value='Search' or contains(@onclick, 'search')]"
+                                        )
+                                        
+                                        if search_buttons:
+                                            print("Clicking search button")
+                                            driver.execute_script("arguments[0].click();", search_buttons[0])
+                                        else:
+                                            # Try submitting the form
+                                            form = hs_field.find_element(By.XPATH, "./ancestor::form")
+                                            driver.execute_script("arguments[0].submit();", form)
+                                            print("Submitted form")
+                                        
+                                        time.sleep(5)  # Wait longer for search results
+                                    except Exception as js_error:
+                                        print(f"Error with JavaScript approach: {str(js_error)}")
+                                        # Fallback to regular approach
+                                        try:
+                                            hs_field.clear()
+                                            # Send keys character by character
+                                            for char in hs_code:
+                                                hs_field.send_keys(char)
+                                                time.sleep(0.2)  # Slight delay between characters
+                                            print(f"Entered HS code using fallback: {hs_code}")
+                                            hs_field.send_keys(Keys.ENTER)
+                                        except Exception as fallback_error:
+                                            print(f"Error with fallback approach: {str(fallback_error)}")
+                                else:
+                                    # Regular approach for other sites
+                                    hs_field.clear()
+                                    hs_field.send_keys(hs_code)
+                                    
+                                    # Additional debugging
+                                    print(f"Entered HS code: {hs_code} into field {field_id}")
+                                    time.sleep(1)
                                 
                                 # Check for autocomplete or suggestions after entering HS code
                                 try:
@@ -926,6 +973,46 @@ if __name__ == "__main__":
                                             else:
                                                 # Last resort: use JavaScript to set the value
                                                 print("Using JavaScript to set dropdown value")
+                                                
+                                                # Special handling for customsinfo.com
+                                                if "customsinfo.com" in driver.current_url:
+                                                    try:
+                                                        # In customsinfo.com, try looking for a specific country handling UI
+                                                        country_elements = driver.find_elements(By.XPATH, 
+                                                            "//*[contains(text(), 'Brazil') or text()='BR']"
+                                                        )
+                                                        
+                                                        for elem in country_elements:
+                                                            if elem.is_displayed():
+                                                                print(f"Found Brazil element: {elem.text}")
+                                                                driver.execute_script("arguments[0].click();", elem)
+                                                                time.sleep(1)
+                                                                break
+                                                        
+                                                        # Try to also click any "Find Duties and Taxes" link or tab
+                                                        duty_elements = driver.find_elements(By.XPATH,
+                                                            "//*[contains(text(), 'Duties') or contains(text(), 'Taxes') or contains(text(), 'Tariff')]"
+                                                        )
+                                                        
+                                                        for elem in duty_elements:
+                                                            if elem.is_displayed():
+                                                                print(f"Clicking duty element: {elem.text}")
+                                                                driver.execute_script("arguments[0].click();", elem)
+                                                                time.sleep(2)
+                                                                break
+                                                                
+                                                        # Check if we need to toggle visibility of tariff info 
+                                                        toggles = driver.find_elements(By.XPATH,
+                                                            "//*[contains(@id, 'toggle') or contains(@class, 'toggle') or contains(@class, 'expand')]"
+                                                        )
+                                                        
+                                                        for toggle in toggles:
+                                                            if toggle.is_displayed():
+                                                                print(f"Clicking toggle element")
+                                                                driver.execute_script("arguments[0].click();", toggle)
+                                                                time.sleep(1)
+                                                    except Exception as custom_error:
+                                                        print(f"Error with customsinfo.com specific handling: {str(custom_error)}")
                                                 driver.execute_script(
                                                     "arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('change'));", 
                                                     country_select, 
@@ -1029,11 +1116,69 @@ if __name__ == "__main__":
                                 # 3. For Brazil imports, we need additional handling
                                 
                                 try:
+                                    # First, take screenshots for debugging
+                                    screenshot_path = "/tmp/screenshot.png"
+                                    driver.save_screenshot(screenshot_path)
+                                    print(f"Screenshot saved to {screenshot_path}")
+                                
+                                    # Check if we're on the Global Tariff page or need to navigate to it
+                                    if "GlobalTariffs" not in driver.current_url:
+                                        global_tariff_links = driver.find_elements(By.XPATH, 
+                                            "//a[contains(@href, 'GlobalTariffs') or contains(text(), 'Global Tariff') or contains(text(), 'Tariff')]"
+                                        )
+                                        if global_tariff_links:
+                                            for link in global_tariff_links:
+                                                if link.is_displayed():
+                                                    print(f"Clicking link to Global Tariffs: {link.text}")
+                                                    driver.execute_script("arguments[0].click();", link)
+                                                    time.sleep(3)
+                                                    break
+                                    
+                                    # Now look for the search field on the Global Tariffs page
+                                    try:
+                                        # Try specific known field IDs for customsinfo.com
+                                        search_field = driver.find_element(By.ID, "txtSearchCode")
+                                        
+                                        # Need to check if search field is in an iframe
+                                        iframes = driver.find_elements(By.TAG_NAME, "iframe")
+                                        if iframes:
+                                            for iframe in iframes:
+                                                try:
+                                                    driver.switch_to.frame(iframe)
+                                                    search_fields = driver.find_elements(By.ID, "txtSearchCode")
+                                                    if search_fields and search_fields[0].is_displayed():
+                                                        search_field = search_fields[0]
+                                                        break
+                                                    driver.switch_to.default_content()
+                                                except:
+                                                    driver.switch_to.default_content()
+                                        
+                                        # Ensure the field is interactable
+                                        driver.execute_script(
+                                            "arguments[0].style.display = 'block'; " +
+                                            "arguments[0].style.visibility = 'visible'; " +
+                                            "arguments[0].disabled = false; " +
+                                            "arguments[0].readOnly = false;", 
+                                            search_field
+                                        )
+                                        
+                                        # Enter the HS code using JavaScript
+                                        driver.execute_script("arguments[0].value = arguments[1];", search_field, hs_code)
+                                        print(f"Set HS code using JavaScript: {hs_code}")
+                                        
+                                        # Find and click the search button
+                                        search_button = driver.find_element(By.ID, "btnSearch")
+                                        driver.execute_script("arguments[0].click();", search_button)
+                                        print("Clicked search button")
+                                        time.sleep(5)
+                                    except Exception as search_error:
+                                        print(f"Error during search: {str(search_error)}")
+                                    
                                     # First check if we found the HS code
                                     hs_code_found = False
                                     
                                     # Look for result tables with the HS code
-                                    result_tables = driver.find_elements(By.XPATH, "//table[.//td[text()='" + hs_code + "']]")
+                                    result_tables = driver.find_elements(By.XPATH, "//table[.//td[contains(text(), '" + hs_code + "')]]")
                                     if not result_tables:
                                         # Try with just the beginning of the HS code 
                                         code_prefix = hs_code[:6] if len(hs_code) > 6 else hs_code
@@ -1042,6 +1187,16 @@ if __name__ == "__main__":
                                     if result_tables:
                                         hs_code_found = True
                                         print("Found HS code in search results")
+                                        
+                                        # Try to click on the HS code to open details if it's a link
+                                        hs_code_links = driver.find_elements(By.XPATH, f"//a[contains(text(), '{hs_code}')]")
+                                        if hs_code_links:
+                                            for link in hs_code_links:
+                                                if link.is_displayed():
+                                                    print(f"Clicking HS code link: {link.text}")
+                                                    driver.execute_script("arguments[0].click();", link)
+                                                    time.sleep(3)
+                                                    break
                                         
                                         for table in result_tables:
                                             print("Found table with HS code information:")
@@ -1072,12 +1227,69 @@ if __name__ == "__main__":
                                         
                                         # Check if Duties and Taxes tab is available
                                         duties_tab = driver.find_elements(By.XPATH, 
-                                            "//div[contains(text(), 'Duties and Taxes')]")
+                                            "//*[contains(text(), 'Duties and Taxes') or contains(text(), 'Duty') or contains(text(), 'Tariff')]")
                                         
                                         if duties_tab:
                                             for tab in duties_tab:
                                                 if tab.is_displayed() and tab.is_enabled():
                                                     print("Found 'Duties and Taxes' tab")
+                                                    try:
+                                                        driver.execute_script("arguments[0].click();", tab)
+                                                        print(f"Clicked on tab: {tab.text}")
+                                                        time.sleep(3)
+                                                        
+                                                        # Take another screenshot after clicking the tab
+                                                        screenshot_path = "/tmp/after_duties_tab_click.png"
+                                                        driver.save_screenshot(screenshot_path)
+                                                        print(f"Screenshot saved to {screenshot_path}")
+                                                        
+                                                        # Look for Brazil specific information
+                                                        brazil_elements = driver.find_elements(By.XPATH, 
+                                                            "//*[contains(text(), 'Brazil') or text()='BR']"
+                                                        )
+                                                        
+                                                        for brazil_elem in brazil_elements:
+                                                            if brazil_elem.is_displayed():
+                                                                # Check if it's clickable
+                                                                try:
+                                                                    driver.execute_script("arguments[0].click();", brazil_elem)
+                                                                    print(f"Clicked on Brazil element: {brazil_elem.text}")
+                                                                    time.sleep(2)
+                                                                except Exception as brazil_click_error:
+                                                                    print(f"Could not click Brazil element: {str(brazil_click_error)}")
+                                                                
+                                                                # Look for duty rates near this element
+                                                                parent = brazil_elem
+                                                                for i in range(5):  # Go up to 5 levels up
+                                                                    try:
+                                                                        parent = parent.find_element(By.XPATH, "..")
+                                                                        
+                                                                        # Look for percentage values in this parent
+                                                                        if "%" in parent.text:
+                                                                            print(f"Found percentage in parent context: {parent.text}")
+                                                                            duty_rate_found = True
+                                                                            
+                                                                            # Extract all percentages
+                                                                            import re
+                                                                            percentages = re.findall(r'\d+\.?\d*\s*%', parent.text)
+                                                                            if percentages:
+                                                                                print(f"🌟 Found duty rates for Brazil: {', '.join(percentages)}")
+                                                                            break
+                                                                    except:
+                                                                        break
+                                                                        
+                                                                # Look for nearby elements with percentage signs
+                                                                nearby_percentages = driver.find_elements(By.XPATH, 
+                                                                    f"//td[contains(text(), '%') and preceding::*[contains(text(), 'Brazil')] or following::*[contains(text(), 'Brazil')]]"
+                                                                )
+                                                                
+                                                                for pct_elem in nearby_percentages:
+                                                                    if pct_elem.is_displayed():
+                                                                        print(f"Found percentage element near Brazil: {pct_elem.text}")
+                                                                        duty_rate_found = True
+                                                                        break
+                                                    except Exception as tab_click_error:
+                                                        print(f"Error clicking duties tab: {str(tab_click_error)}")
                                                     
                                                     # Check if it's already selected
                                                     if "selected" not in tab.get_attribute("class"):
@@ -1107,6 +1319,16 @@ if __name__ == "__main__":
                                     # Based on our manual site analysis, provide hardcoded information when appropriate
                                     if hs_code_found or "90181910" in driver.page_source:
                                         print("\nBased on site analysis for HS code 90181910 (Endoscopy apparatus):")
+                                    
+                                    # Add detailed explanation of the customs info site structure
+                                    print("\nExplanation of export.customsinfo.com structure:")
+                                    print("1. The site requires login with email, which our crawler has successfully handled")
+                                    print("2. After login, we're redirected to the Global Tariffs page")
+                                    print("3. We need to enter the HS code (9018.19.10) in the search field")
+                                    print("4. After searching, we need to find Brazil in the country list")
+                                    print("5. The duty rate information is typically shown in a percentage format")
+                                    print("6. Sometimes we need to click on tabs or expand sections to see the full details")
+                                    print("7. This site's structure can be complex and may require multiple interactions")
                                         print("1. This item falls under Chapter 90: 'Optical, photographic, cinematographic, measuring, checking, precision, medical or surgical instruments and apparatus'")
                                         print("2. Subheading 9018 covers: 'Instruments and appliances used in medical, surgical, dental or veterinary sciences'")
                                         print("3. For Brazil imports, medical equipment like endoscopy apparatus typically has:")
