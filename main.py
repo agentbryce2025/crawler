@@ -274,6 +274,58 @@ def fill_every_form_tool(arg: Dict[str, str] = None) -> str:
             except:
                 break
         return element
+        
+    def find_and_click_image_buttons(driver, keywords=None, src_patterns=None, wait_time=3):
+        """
+        Find and click image buttons based on alt text keywords or src patterns.
+        
+        Args:
+            driver: The WebDriver instance
+            keywords: List of keywords to search for in alt text
+            src_patterns: List of patterns to search for in src attribute
+            wait_time: Time to wait after clicking
+            
+        Returns:
+            bool: True if an image button was found and clicked, False otherwise
+        """
+        if keywords is None:
+            keywords = ['calc', 'duty', 'tax', 'tariff']
+        
+        if src_patterns is None:
+            src_patterns = ['globe.gif', 'calc', 'duty']
+        
+        # Build XPath for alt text keywords
+        alt_conditions = " or ".join([
+            f"contains(translate(@alt, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{kw.lower()}')" 
+            for kw in keywords
+        ])
+        
+        # Build XPath for src patterns
+        src_conditions = " or ".join([
+            f"contains(@src, '{pattern}')" 
+            for pattern in src_patterns
+        ])
+        
+        # Combine conditions
+        xpath = f"//img[{alt_conditions} or {src_conditions}]"
+        
+        try:
+            images = driver.find_elements(By.XPATH, xpath)
+            
+            if images:
+                for img in images:
+                    if img.is_displayed():
+                        alt_text = img.get_attribute("alt") or ""
+                        src = img.get_attribute("src") or ""
+                        print(f"Found image button with alt text: '{alt_text}' and src: {src}")
+                        driver.execute_script("arguments[0].click();", img)
+                        time.sleep(wait_time)
+                        print(f"Clicked on image button: {alt_text or src}")
+                        return True
+        except Exception as e:
+            print(f"Error finding/clicking image buttons: {str(e)}")
+        
+        return False
 
     def is_submit_candidate(element, form):
         """Dynamically determine if an element is a submit button based on context and behavior."""
@@ -1265,6 +1317,20 @@ if __name__ == "__main__":
                                         print(f"Clicking search button: {button.text or button.get_attribute('value')}")
                                         driver.execute_script("arguments[0].click();", button)
                                         time.sleep(5)
+                                        
+                                        # After clicking search, look for any calc duty image buttons like globe.gif
+                                        time.sleep(2)  # Wait for page to update
+                                        
+                                        # Use our helper method to find and click image buttons related to calculating duties
+                                        duty_calc_keywords = ['calc', 'duty', 'tax', 'tariff']
+                                        duty_calc_src_patterns = ['globe.gif', 'calc', 'duty']
+                                        
+                                        find_and_click_image_buttons(
+                                            driver, 
+                                            keywords=duty_calc_keywords, 
+                                            src_patterns=duty_calc_src_patterns,
+                                            wait_time=3
+                                        )
                                         break
                             else:
                                 # If no button found, try pressing Enter in the last field used
@@ -1342,6 +1408,20 @@ if __name__ == "__main__":
                                     search_button = driver.find_element(By.ID, "btnSearch")
                                     driver.execute_script("arguments[0].click();", search_button)
                                     print("Clicked search button")
+                                    
+                                    # After clicking search, look for image buttons (especially for customsinfo.com globe.gif)
+                                    time.sleep(3)  # Wait for page to update
+                                    
+                                    # Use our helper method to find and click image buttons related to calculating duties
+                                    duty_calc_keywords = ['calc', 'duty', 'tax', 'tariff']
+                                    duty_calc_src_patterns = ['globe.gif', 'calc', 'duty']
+                                    
+                                    find_and_click_image_buttons(
+                                        driver, 
+                                        keywords=duty_calc_keywords, 
+                                        src_patterns=duty_calc_src_patterns,
+                                        wait_time=3
+                                    )
                                     time.sleep(5)
                                 except Exception as search_error:
                                     print(f"Error during search: {str(search_error)}")
@@ -1480,13 +1560,28 @@ if __name__ == "__main__":
                                         calc_buttons = driver.find_elements(By.XPATH, 
                                             "//input[@value='Calculate' or @type='button'][contains(@id, 'Calculate')]")
                                         
+                                        # Try regular buttons first
+                                        button_clicked = False
                                         if calc_buttons:
                                             for btn in calc_buttons:
                                                 if btn.is_displayed():
                                                     print("Found Calculate button")
                                                     driver.execute_script("arguments[0].click();", btn)
                                                     time.sleep(2)
+                                                    button_clicked = True
                                                     break
+                                        
+                                        # If no regular button found/clicked, try image buttons
+                                        if not button_clicked:
+                                            duty_calc_keywords = ['calc', 'duty', 'tax', 'tariff']
+                                            duty_calc_src_patterns = ['globe.gif', 'calc', 'duty']
+                                            
+                                            button_clicked = find_and_click_image_buttons(
+                                                driver, 
+                                                keywords=duty_calc_keywords, 
+                                                src_patterns=duty_calc_src_patterns,
+                                                wait_time=2
+                                            )
                                     
                                     # Based on our manual site analysis, provide hardcoded information when appropriate
                                     if hs_code_found or "90181910" in driver.page_source:
