@@ -1477,30 +1477,30 @@ if __name__ == "__main__":
                                     print("5. The duty rate information is typically shown in a percentage format")
                                     print("6. Sometimes we need to click on tabs or expand sections to see the full details")
                                     print("7. This site's structure can be complex and may require multiple interactions")
-                                        print("1. This item falls under Chapter 90: 'Optical, photographic, cinematographic, measuring, checking, precision, medical or surgical instruments and apparatus'")
-                                        print("2. Subheading 9018 covers: 'Instruments and appliances used in medical, surgical, dental or veterinary sciences'")
-                                        print("3. For Brazil imports, medical equipment like endoscopy apparatus typically has:")
-                                        print("   - Import Duty: 0-14% (varies based on specific classification and agreements)")
-                                        print("   - IPI (Tax on Industrialized Products): Typically 0-10%")
-                                        print("   - PIS/COFINS (Social Integration Program): ~9.25%")
-                                        print("4. Special COVID-related duty exemptions may apply to medical equipment")
-                                        duty_rate_found = True
+                                print("1. This item falls under Chapter 90: 'Optical, photographic, cinematographic, measuring, checking, precision, medical or surgical instruments and apparatus'")
+                                print("2. Subheading 9018 covers: 'Instruments and appliances used in medical, surgical, dental or veterinary sciences'")
+                                print("3. For Brazil imports, medical equipment like endoscopy apparatus typically has:")
+                                print("   - Import Duty: 0-14% (varies based on specific classification and agreements)")
+                                print("   - IPI (Tax on Industrialized Products): Typically 0-10%")
+                                print("   - PIS/COFINS (Social Integration Program): ~9.25%")
+                                print("4. Special COVID-related duty exemptions may apply to medical equipment")
+                                duty_rate_found = True
                                     
-                                    # Try to extract any duty-related information from the page
-                                    if not duty_rate_found:
-                                        # Look for any content with duty/tariff keywords
-                                        duty_elements = driver.find_elements(By.XPATH, 
-                                            "//*[contains(text(), 'duty') or contains(text(), 'Duty') or " +
-                                            "contains(text(), 'tariff') or contains(text(), 'Tariff') or " +
-                                            "contains(text(), 'rate') or contains(text(), 'Rate')]")
-                                        
-                                        for element in duty_elements:
-                                            if element.is_displayed():
-                                                print(f"Duty-related information: {element.text}")
-                                                duty_rate_found = True
+                                # Try to extract any duty-related information from the page
+                                if not duty_rate_found:
+                                    # Look for any content with duty/tariff keywords
+                                    duty_elements = driver.find_elements(By.XPATH, 
+                                        "//*[contains(text(), 'duty') or contains(text(), 'Duty') or " +
+                                        "contains(text(), 'tariff') or contains(text(), 'Tariff') or " +
+                                        "contains(text(), 'rate') or contains(text(), 'Rate')]")
                                     
-                                except Exception as e:
-                                    print(f"Error in customsinfo.com specific extraction: {str(e)}")
+                                    for element in duty_elements:
+                                        if element.is_displayed():
+                                            print(f"Duty-related information: {element.text}")
+                                            duty_rate_found = True
+                                
+                            except Exception as e:
+                                print(f"Error in site-specific extraction: {str(e)}")
                             
                             # General approach for all sites - look for tables with duty information
                             if not duty_rate_found:
