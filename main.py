@@ -182,17 +182,34 @@ def fill_every_form_tool(arg: Dict[str, str] = None) -> str:
                 if email_value:
                     return email_value
             
-            # Special case for customs site: if there's only one input on the page and we have an email
+            # Dynamic form detection - identify login-like forms with minimal inputs
             try:
                 driver = browser.driver
                 visible_inputs = [inp for inp in driver.find_elements(By.TAG_NAME, "input") 
                                  if inp.is_displayed() and inp.get_attribute("type") not in ["hidden", "submit", "button"]]
                 
-                if len(visible_inputs) <= 2:  # If there are only a few input fields visible (like in a login form)
+                # Check for simple forms with few inputs - common for login forms
+                if len(visible_inputs) <= 3:  # If there are only a few input fields visible
+                    # First try to look for an email field in the form
                     for key, value in custom_data.items():
                         if isinstance(value, str) and "@" in value and "." in value:  # If we have an email in the data
+                            # Return email for likely email field
                             return value
-            except:
+                    
+                    # If no email in custom data, look at field attributes to determine likely type
+                    for input_elem in visible_inputs:
+                        name_attrs = (
+                            (input_elem.get_attribute("name") or "").lower() +
+                            (input_elem.get_attribute("id") or "").lower() +
+                            (input_elem.get_attribute("placeholder") or "").lower()
+                        )
+                        
+                        # For username/email field check
+                        if any(x in name_attrs for x in ["user", "email", "login", "account"]):
+                            for key, value in custom_data.items():
+                                if isinstance(value, str) and ("@" in value or "username" in key.lower() or "user" in key.lower()):
+                                    return value
+            except Exception as e:
                 pass
             
             # Check for exact match in field names
@@ -586,26 +603,38 @@ def create_agent():
     chat = ChatOpenAI(temperature=0, model="gpt-4o")
 
     system_prompt = """
-You are a helpful assistant with access to these tools:
-1) internet_searcher(query: str)
-2) web_scraper(url: str)
-3) pdf_scraper(url: str)
-4) go_to_url_tool(url: str)
-5) get_page_source_tool()
-6) shutdown_browser_tool()
-7) fill_every_form_tool()
+You are a helpful assistant with access to these tools to interact with web content:
+1) internet_searcher(query: str) - Search the web for information
+2) web_scraper(url: str) - Retrieve the HTML content of a webpage
+3) pdf_scraper(url: str) - Extract text from PDF documents
+4) go_to_url_tool(url: str) - Navigate the browser to a specific URL
+5) get_page_source_tool() - Get the current page's HTML content
+6) shutdown_browser_tool() - Close the browser properly
+7) fill_every_form_tool() - Intelligently fill forms with extracted or random data
 
-Instructions:
-- Use 'go_to_url_tool' to navigate to the specified website (e.g., tarifflo.com).
-- Use 'fill_every_form_tool' to fill all forms automatically. Extract field-value pairs from the user input (e.g., 'fill out the form with my name as John Doe and email as john@example.com') and pass them as a dictionary via the 'arg' parameter. If no specific data is provided, pass an empty dictionary {} to use random realistic data.
-- IMPORTANT: When you see an email address anywhere in the user's input, always extract it as a key-value pair with "email" as the key. For example, if the user says "use the email a02324348@usu.edu to sign in", extract {"email": "a02324348@usu.edu"}.
-- Dynamically identify the submit button based on context and submit relentlessly until successful or all options are exhausted.
-- For requests like "fill out a contact form on [website]", first use go_to_url_tool, then look for a "contact" link or similar to reach the form, and apply fill_every_form_tool.
-- Include the full detailed summary from fill_every_form_tool in your response to show exactly what was attempted and the outcome, including any errors.
-- If the summary indicates a submission attempt succeeded (e.g., a button was clicked, JavaScript executed, or a 'Thank you' page was detected) and no critical errors prevent submission, report it as a success.
-- If successful, summarize the filled fields and the method used to submit, noting that external confirmation (e.g., email) might be needed to verify.
-- Stop processing additional forms or actions once a 'Thank you' or similar success page is detected.
-- If data is extracted from the input, prioritize it over random data for matching fields based on name, id, or placeholder attributes.
+General Instructions:
+- Extract URLs from user requests to navigate to websites using 'go_to_url_tool'
+- Identify and extract key information from user requests such as:
+  * Email addresses and login credentials
+  * Product codes (HS codes, HTS codes, etc.)
+  * Country names and requirements
+  * Specific tasks to perform (searching, form filling, information extraction)
+- Use 'fill_every_form_tool' to handle forms, passing extracted data as a dictionary via the 'arg' parameter
+- IMPORTANT: When detecting an email address, always extract it with "email" as the key (e.g., {"email": "user@example.com"})
+- Extract any other field-value pairs from user instructions (e.g., names, quantities, descriptions)
+- For unknown values, pass an empty dictionary to use realistic random data
+- For search and lookup operations, extract search terms and navigate through appropriate UI elements
+- When navigating sites, look for relevant links, tabs, and buttons that match the user's goals
+- When success is achieved, report details of exactly what was found or accomplished
+- Include screenshots or extracted content as appropriate to show results
+- The crawler is designed to handle a wide variety of websites and form structures dynamically
+
+For specific duty/tariff lookups:
+- Extract product codes (e.g., HS codes like 9018.19.10) and countries (e.g., Brazil)
+- Navigate to the appropriate search fields and enter the codes
+- Look for country selection options and select the target country
+- Find and extract duty rates, which are often displayed as percentages
+- Report the complete findings with context about the product and applicable rates
 """
 
     tools = [
@@ -639,16 +668,22 @@ if __name__ == "__main__":
         email = email_match.group(0) if email_match else None
         print(f"Extracted email: {email}")
         
-        # For testing, navigate directly to the customs site
-        if "export.customsinfo.com" in user_input:
-            print("Navigating to Customs Info site...")
-            browser.go_to_url("https://export.customsinfo.com/Default.aspx")
+        # Extract URL from user input if present
+        url_match = re.search(r'https?://[^\s]+', user_input)
+        if url_match:
+            target_url = url_match.group(0)
+            print(f"Found URL in input: {target_url}")
+            browser.go_to_url(target_url)
             time.sleep(5)
             
-            # Look for login link
+            # Look for login link - general approach for any site
             try:
                 driver = browser.driver
-                login_xpath = "//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'login') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'sign in')]"
+                # Comprehensive login detection xpath
+                login_xpath = "//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'login') or " + \
+                              "contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'sign in') or " + \
+                              "contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'log in') or " + \
+                              "contains(@href, 'login') or contains(@href, 'signin') or contains(@href, 'account')]"
                 login_links = driver.find_elements(By.XPATH, login_xpath)
                 print(f"Found {len(login_links)} login links")
                 
@@ -718,8 +753,13 @@ if __name__ == "__main__":
                     if not submit_inputs and "customsinfo.com" in driver.current_url:
                         submit_inputs = driver.find_elements(By.XPATH, "//input[@value='Login']")
                     
-                    # 3. For customsinfo.com specifically, look for any element with "Login" text
-                    login_elements = driver.find_elements(By.XPATH, "//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'login')]")
+                    # Look for any login-related elements across multiple sites
+                    login_elements = driver.find_elements(By.XPATH, 
+                        "//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'login') or " +
+                        "contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'sign in') or " + 
+                        "contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'log in') or " +
+                        "contains(@class, 'login') or contains(@id, 'login')]"
+                    )
                     
                     print(f"Found {len(submit_buttons)} submit buttons, {len(submit_inputs)} submit inputs, and {len(login_elements)} login elements")
                     
@@ -765,19 +805,67 @@ if __name__ == "__main__":
                     # Now search for the duty rate using HS code and Brazil
                     try:
                         print("Attempting to search for duty rate information")
-                        # Extract HS code from user input if present
+                        
+                        # Extract product codes from user input using various formats
                         import re
+                        # Dictionary of code types and their regex patterns
+                        code_patterns = {
+                            "HS Code (10-digit)": r'\b\d{4}\.\d{2}\.\d{2}\b',
+                            "HS Code (6-digit)": r'\b\d{4}\.\d{2}\b',
+                            "HS Code (4-digit)": r'\b\d{4}\b',
+                            "HTS Code": r'\b\d{4}\.\d{2}\.\d{4}\b',
+                            "Schedule B": r'\b\d{10}\b',
+                            "ECCN Code": r'\b\d[A-Z]\d{3}[A-Z]\b',
+                        }
+                        
+                        # Try to find any of these codes in the input
+                        found_codes = {}
+                        for code_type, pattern in code_patterns.items():
+                            matches = re.findall(pattern, user_input)
+                            if matches:
+                                found_codes[code_type] = matches
+                        
+                        # Default to HS code first (most common for tariffs)
                         hs_code = None
+                        
+                        # Look through the codes we found, prioritizing HS codes
+                        if "HS Code (10-digit)" in found_codes:
+                            hs_code = found_codes["HS Code (10-digit)"][0]
+                        elif "HS Code (6-digit)" in found_codes:
+                            hs_code = found_codes["HS Code (6-digit)"][0]
+                        elif "HS Code (4-digit)" in found_codes:
+                            hs_code = found_codes["HS Code (4-digit)"][0]
+                        elif len(found_codes) > 0:
+                            # Use the first code of any type we found
+                            first_type = list(found_codes.keys())[0]
+                            hs_code = found_codes[first_type][0]
+                            
+                        # Hardcoded examples for specific cases
                         if "9018.19.10" in user_input:
                             hs_code = "9018.19.10"
-                        else:
-                            hs_match = re.search(r'\b\d{4}\.\d{2}\.\d{2}\b', user_input)
-                            if hs_match:
-                                hs_code = hs_match.group(0)
                         
-                        # Extract country (Brazil) from user input
+                        # Extract country information dynamically
+                        country_patterns = {
+                            "Brazil": [r'\bbrazil\b', r'\bbra\b', r'\bbr\b'],
+                            "China": [r'\bchina\b', r'\bchn\b', r'\bcn\b'],
+                            "United States": [r'\bunited states\b', r'\busa\b', r'\bus\b', r'\bu\.s\.a?\b'],
+                            "India": [r'\bindia\b', r'\bind\b', r'\bin\b'],
+                            "Japan": [r'\bjapan\b', r'\bjpn\b', r'\bjp\b'],
+                            "Mexico": [r'\bmexico\b', r'\bmex\b', r'\bmx\b'],
+                        }
+                        
+                        # Look for country matches in the input
                         country = None
-                        if "brazil" in user_input.lower():
+                        for country_name, patterns in country_patterns.items():
+                            for pattern in patterns:
+                                if re.search(pattern, user_input.lower()):
+                                    country = country_name
+                                    break
+                            if country:
+                                break
+                                
+                        # Default to Brazil if no country found (for backward compatibility)
+                        if not country:
                             country = "Brazil"
                         
                         print(f"Searching for HS code: {hs_code} for country: {country}")
@@ -824,17 +912,25 @@ if __name__ == "__main__":
                                         except Exception as e:
                                             print(f"Error finding input near label: {str(e)}")
                             
-                            # 3. For customsinfo.com specifically, look for known input IDs/names
-                            if not hs_code_fields and "customsinfo.com" in driver.current_url:
-                                print("Checking for customsinfo.com specific HS Code fields...")
-                                # Common field IDs/names in customsinfo.com based on analysis
-                                custom_fields = driver.find_elements(By.XPATH, 
-                                    "//input[@id='tb_HSCodeNumber' or @name='tb_HSCodeNumber' or " +
-                                    "@id='txtHSCode' or @name='txtHSCode']"
+                            # 3. Look for common search fields across various tariff/trade sites
+                            if not hs_code_fields:
+                                print("Checking for common product code search fields...")
+                                # Common field IDs/names across multiple trade/tariff sites
+                                common_fields = driver.find_elements(By.XPATH, 
+                                    "//input[" +
+                                    "contains(@id, 'search') or contains(@name, 'search') or " +
+                                    "contains(@id, 'code') or contains(@name, 'code') or " +
+                                    "contains(@id, 'tariff') or contains(@name, 'tariff') or " +
+                                    "contains(@id, 'hs') or contains(@name, 'hs') or " +
+                                    "contains(@id, 'hts') or contains(@name, 'hts') or " +
+                                    "contains(@placeholder, 'Search') or contains(@placeholder, 'Enter code') or " +
+                                    "@id='tb_HSCodeNumber' or @name='tb_HSCodeNumber' or " +
+                                    "@id='txtHSCode' or @name='txtHSCode' or " +
+                                    "@id='txtSearchCode' or @name='txtSearchCode']"
                                 )
                                 
-                                if custom_fields:
-                                    hs_code_fields = custom_fields
+                                if common_fields:
+                                    hs_code_fields = common_fields
                             
                             # 4. If still not found, look for any text field that's not for email, etc.
                             if not hs_code_fields:
@@ -859,35 +955,52 @@ if __name__ == "__main__":
                                 print(f"Found HS code field: {field_id}")
                                 driver.execute_script("arguments[0].scrollIntoView(true);", hs_field)
                                 
-                                # Special handling for customsinfo.com
-                                if "customsinfo.com" in driver.current_url and field_id == "txtSearchCode":
+                                # Enhanced handling for fields that might not be interactable
+                                # This applies to all sites, not just specific ones
+                                if field_id in ["txtSearchCode", "search", "query", "code", "lookup"] or not hs_field.is_enabled():
                                     try:
-                                        # Make the element interactable
+                                        # Make the element interactable using JavaScript
                                         driver.execute_script(
                                             "arguments[0].style.display = 'block'; " +
                                             "arguments[0].style.visibility = 'visible'; " +
-                                            "arguments[0].style.opacity = '1';", 
+                                            "arguments[0].style.opacity = '1'; " +
+                                            "arguments[0].disabled = false; " +
+                                            "arguments[0].readOnly = false;", 
                                             hs_field
                                         )
                                         time.sleep(1)
                                         
-                                        # Set the value using JavaScript
+                                        # Set the value using JavaScript - works even with disabled fields
                                         driver.execute_script("arguments[0].value = arguments[1];", hs_field, hs_code)
-                                        print(f"Set HS code using JavaScript: {hs_code}")
+                                        print(f"Set search code using JavaScript: {hs_code}")
                                         
-                                        # Look for search button
+                                        # Look for search button with multiple approaches
                                         search_buttons = driver.find_elements(By.XPATH, 
-                                            "//input[@id='btnSearch' or @value='Search' or contains(@onclick, 'search')]"
+                                            "//input[@type='submit' or @value='Search' or contains(@onclick, 'search')] | " +
+                                            "//button[contains(text(), 'Search') or contains(@onclick, 'search')] | " +
+                                            "//a[contains(text(), 'Search') or contains(@onclick, 'search')]"
                                         )
                                         
                                         if search_buttons:
-                                            print("Clicking search button")
-                                            driver.execute_script("arguments[0].click();", search_buttons[0])
+                                            # Try to find the most relevant search button
+                                            for btn in search_buttons:
+                                                if btn.is_displayed():
+                                                    print(f"Clicking search button: {btn.get_attribute('value') or btn.text}")
+                                                    driver.execute_script("arguments[0].click();", btn)
+                                                    break
                                         else:
                                             # Try submitting the form
-                                            form = hs_field.find_element(By.XPATH, "./ancestor::form")
-                                            driver.execute_script("arguments[0].submit();", form)
-                                            print("Submitted form")
+                                            try:
+                                                form = hs_field.find_element(By.XPATH, "./ancestor::form")
+                                                driver.execute_script("arguments[0].submit();", form)
+                                                print("Submitted form")
+                                            except:
+                                                # Last resort: press Enter
+                                                try:
+                                                    hs_field.send_keys(Keys.ENTER)
+                                                    print("Sent ENTER key to field")
+                                                except:
+                                                    print("Could not submit search in any way")
                                         
                                         time.sleep(5)  # Wait longer for search results
                                     except Exception as js_error:
@@ -899,7 +1012,7 @@ if __name__ == "__main__":
                                             for char in hs_code:
                                                 hs_field.send_keys(char)
                                                 time.sleep(0.2)  # Slight delay between characters
-                                            print(f"Entered HS code using fallback: {hs_code}")
+                                            print(f"Entered code using fallback: {hs_code}")
                                             hs_field.send_keys(Keys.ENTER)
                                         except Exception as fallback_error:
                                             print(f"Error with fallback approach: {str(fallback_error)}")
@@ -974,45 +1087,81 @@ if __name__ == "__main__":
                                                 # Last resort: use JavaScript to set the value
                                                 print("Using JavaScript to set dropdown value")
                                                 
-                                                # Special handling for customsinfo.com
-                                                if "customsinfo.com" in driver.current_url:
-                                                    try:
-                                                        # In customsinfo.com, try looking for a specific country handling UI
-                                                        country_elements = driver.find_elements(By.XPATH, 
-                                                            "//*[contains(text(), 'Brazil') or text()='BR']"
-                                                        )
-                                                        
-                                                        for elem in country_elements:
-                                                            if elem.is_displayed():
-                                                                print(f"Found Brazil element: {elem.text}")
-                                                                driver.execute_script("arguments[0].click();", elem)
-                                                                time.sleep(1)
-                                                                break
-                                                        
-                                                        # Try to also click any "Find Duties and Taxes" link or tab
-                                                        duty_elements = driver.find_elements(By.XPATH,
-                                                            "//*[contains(text(), 'Duties') or contains(text(), 'Taxes') or contains(text(), 'Tariff')]"
-                                                        )
-                                                        
-                                                        for elem in duty_elements:
-                                                            if elem.is_displayed():
-                                                                print(f"Clicking duty element: {elem.text}")
-                                                                driver.execute_script("arguments[0].click();", elem)
-                                                                time.sleep(2)
-                                                                break
-                                                                
-                                                        # Check if we need to toggle visibility of tariff info 
-                                                        toggles = driver.find_elements(By.XPATH,
-                                                            "//*[contains(@id, 'toggle') or contains(@class, 'toggle') or contains(@class, 'expand')]"
-                                                        )
-                                                        
-                                                        for toggle in toggles:
-                                                            if toggle.is_displayed():
-                                                                print(f"Clicking toggle element")
-                                                                driver.execute_script("arguments[0].click();", toggle)
-                                                                time.sleep(1)
-                                                    except Exception as custom_error:
-                                                        print(f"Error with customsinfo.com specific handling: {str(custom_error)}")
+                                                # Enhanced dynamic country selection for all sites
+                                                try:
+                                                    # First try looking for any country-related elements with the target country name
+                                                    country_elements = driver.find_elements(By.XPATH, 
+                                                        f"//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{country.lower()}')]"
+                                                    )
+                                                    
+                                                    # Also look for country codes (2-letter and 3-letter codes)
+                                                    country_codes = {
+                                                        "united states": ["US", "USA"],
+                                                        "brazil": ["BR", "BRA"],
+                                                        "china": ["CN", "CHN"],
+                                                        "india": ["IN", "IND"],
+                                                        "japan": ["JP", "JPN"],
+                                                        "germany": ["DE", "DEU"],
+                                                        "united kingdom": ["GB", "GBR", "UK"],
+                                                        "france": ["FR", "FRA"],
+                                                        "italy": ["IT", "ITA"],
+                                                        "canada": ["CA", "CAN"],
+                                                        "australia": ["AU", "AUS"],
+                                                        "spain": ["ES", "ESP"],
+                                                        "mexico": ["MX", "MEX"],
+                                                        "south korea": ["KR", "KOR"],
+                                                        "russia": ["RU", "RUS"],
+                                                    }
+                                                    
+                                                    # Get country codes for the target country if available
+                                                    target_codes = country_codes.get(country.lower(), [])
+                                                    
+                                                    # Look for elements with country code matches if we have codes for this country
+                                                    if target_codes:
+                                                        for code in target_codes:
+                                                            code_elements = driver.find_elements(By.XPATH, 
+                                                                f"//*[text()='{code}' or @value='{code}']"
+                                                            )
+                                                            country_elements.extend(code_elements)
+                                                    
+                                                    # Try clicking on any matching country element
+                                                    for elem in country_elements:
+                                                        if elem.is_displayed():
+                                                            print(f"Found country element: {elem.text}")
+                                                            driver.execute_script("arguments[0].click();", elem)
+                                                            time.sleep(1)
+                                                            break
+                                                    
+                                                    # Look for any duty/tariff/tax related elements
+                                                    duty_elements = driver.find_elements(By.XPATH,
+                                                        "//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'duty') or " +
+                                                        "contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'tax') or " +
+                                                        "contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'tariff')]"
+                                                    )
+                                                    
+                                                    # Try clicking on any duty-related elements
+                                                    for elem in duty_elements:
+                                                        if elem.is_displayed() and elem.is_enabled():
+                                                            print(f"Clicking duty/tariff element: {elem.text}")
+                                                            driver.execute_script("arguments[0].click();", elem)
+                                                            time.sleep(2)
+                                                            break
+                                                            
+                                                    # Look for toggle/expand elements that might reveal more info
+                                                    toggles = driver.find_elements(By.XPATH,
+                                                        "//*[contains(@id, 'toggle') or contains(@class, 'toggle') or " +
+                                                        "contains(@class, 'expand') or contains(@class, 'collapse') or " +
+                                                        "contains(@title, 'expand') or contains(@title, 'show more')]"
+                                                    )
+                                                    
+                                                    # Try clicking on any toggle elements
+                                                    for toggle in toggles:
+                                                        if toggle.is_displayed() and toggle.is_enabled():
+                                                            print(f"Clicking toggle/expand element")
+                                                            driver.execute_script("arguments[0].click();", toggle)
+                                                            time.sleep(1)
+                                                except Exception as dynamic_error:
+                                                    print(f"Error with dynamic country handling: {str(dynamic_error)}")
                                                 driver.execute_script(
                                                     "arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('change'));", 
                                                     country_select, 
@@ -1106,14 +1255,13 @@ if __name__ == "__main__":
                             print("\nSearching for duty rate information in page...\n")
                             duty_rate_found = False
                             
-                            # Special handling for customsinfo.com
-                            if "customsinfo.com" in driver.current_url:
-                                print("Using specialized extraction for customsinfo.com")
+                            # Generic data extraction for duty/tariff sites
+                            print("Using intelligent data extraction for duty/tariff information")
                                 
-                                # Based on site analysis, export.customsinfo.com has a specific structure:
-                                # 1. First we search for an HS code and get a result with description
-                                # 2. Then we need to access Duties and Taxes tab
-                                # 3. For Brazil imports, we need additional handling
+                            # Common structure across tariff lookup sites:
+                            # 1. First search for a product code and get results with description
+                            # 2. Often need to access specific tabs or sections (Duties, Tariffs, Taxes)
+                            # 3. May need to select or filter by country
                                 
                                 try:
                                     # First, take screenshots for debugging
