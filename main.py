@@ -743,10 +743,466 @@ if __name__ == "__main__":
                     
                     time.sleep(5)
                     print(f"Current URL after submission: {driver.current_url}")
+                    
+                    # Check if we're on the Global Tariffs page or need to navigate there
+                    if "GlobalTariffs" in driver.current_url:
+                        print("Successfully navigated to Global Tariffs page")
+                    else:
+                        print("Trying to navigate to Global Tariffs page")
+                        # Look for Global Tariffs link
+                        try:
+                            global_tariffs_links = driver.find_elements(By.XPATH, "//*[contains(text(), 'Global Tariffs') or contains(@href, 'GlobalTariffs')]")
+                            if global_tariffs_links:
+                                for link in global_tariffs_links:
+                                    if link.is_displayed():
+                                        print(f"Clicking Global Tariffs link: {link.text}")
+                                        driver.execute_script("arguments[0].click();", link)
+                                        time.sleep(3)
+                                        break
+                        except Exception as e:
+                            print(f"Error navigating to Global Tariffs: {str(e)}")
+                    
+                    # Now search for the duty rate using HS code and Brazil
+                    try:
+                        print("Attempting to search for duty rate information")
+                        # Extract HS code from user input if present
+                        import re
+                        hs_code = None
+                        if "9018.19.10" in user_input:
+                            hs_code = "9018.19.10"
+                        else:
+                            hs_match = re.search(r'\b\d{4}\.\d{2}\.\d{2}\b', user_input)
+                            if hs_match:
+                                hs_code = hs_match.group(0)
+                        
+                        # Extract country (Brazil) from user input
+                        country = None
+                        if "brazil" in user_input.lower():
+                            country = "Brazil"
+                        
+                        print(f"Searching for HS code: {hs_code} for country: {country}")
+                        
+                        if hs_code and country:
+                            # Look for HS Code input field using various approaches
+                            print("Searching for HS Code input field...")
+                            
+                            # 1. Look for fields with specific HS Code attributes
+                            hs_code_fields = driver.find_elements(By.XPATH, 
+                                "//input[contains(@id, 'HSCode') or contains(@name, 'HSCode') or " +
+                                "contains(@placeholder, 'HS Code') or contains(@placeholder, 'Enter HS Code')]"
+                            )
+                            
+                            # 2. Look for fields preceded by HS Code label
+                            if not hs_code_fields:
+                                print("Looking for HS Code field by label...")
+                                hs_label_elements = driver.find_elements(By.XPATH, 
+                                    "//*[contains(text(), 'HS Code') or contains(text(), 'HTS Code')]"
+                                )
+                                
+                                if hs_label_elements:
+                                    for label in hs_label_elements:
+                                        print(f"Found HS Code label: {label.text}")
+                                        # Try to find an input field next to the label
+                                        try:
+                                            # Check various directions from label (following, parent, siblings)
+                                            input_near_label = None
+                                            
+                                            # Check following element first
+                                            possible_fields = driver.find_elements(By.XPATH, f"//td[contains(text(), 'HS Code')]/following-sibling::td//input")
+                                            if possible_fields:
+                                                input_near_label = possible_fields[0]
+                                            
+                                            # Check sibling
+                                            if not input_near_label:
+                                                possible_fields = driver.find_elements(By.XPATH, f"//input[preceding-sibling::*[contains(text(), 'HS Code')]]")
+                                                if possible_fields:
+                                                    input_near_label = possible_fields[0]
+                                                    
+                                            if input_near_label and input_near_label.is_displayed():
+                                                hs_code_fields = [input_near_label]
+                                                break
+                                        except Exception as e:
+                                            print(f"Error finding input near label: {str(e)}")
+                            
+                            # 3. For customsinfo.com specifically, look for known input IDs/names
+                            if not hs_code_fields and "customsinfo.com" in driver.current_url:
+                                print("Checking for customsinfo.com specific HS Code fields...")
+                                # Common field IDs/names in customsinfo.com based on analysis
+                                custom_fields = driver.find_elements(By.XPATH, 
+                                    "//input[@id='tb_HSCodeNumber' or @name='tb_HSCodeNumber' or " +
+                                    "@id='txtHSCode' or @name='txtHSCode']"
+                                )
+                                
+                                if custom_fields:
+                                    hs_code_fields = custom_fields
+                            
+                            # 4. If still not found, look for any text field that's not for email, etc.
+                            if not hs_code_fields:
+                                print("Looking for any text input field that could be for HS codes...")
+                                # Exclude common fields like email, username, password, etc.
+                                hs_code_fields = driver.find_elements(By.XPATH, 
+                                    "//input[@type='text' and not(" +
+                                    "contains(@id, 'email') or contains(@name, 'email') or " +
+                                    "contains(@id, 'user') or contains(@name, 'user') or " +
+                                    "contains(@id, 'password') or contains(@name, 'password') or " +
+                                    "contains(@id, 'search') or contains(@name, 'search'))]"
+                                )
+                            
+                            # Look for country dropdown or input
+                            country_selects = driver.find_elements(By.XPATH, "//select[contains(@id, 'Country') or contains(@name, 'Country')]")
+                            country_fields = driver.find_elements(By.XPATH, "//input[contains(@id, 'Country') or contains(@name, 'Country')]")
+                            
+                            # Fill in HS Code if field found
+                            if hs_code_fields:
+                                hs_field = hs_code_fields[0]
+                                field_id = hs_field.get_attribute("id") or hs_field.get_attribute("name") or "unknown"
+                                print(f"Found HS code field: {field_id}")
+                                driver.execute_script("arguments[0].scrollIntoView(true);", hs_field)
+                                hs_field.clear()
+                                hs_field.send_keys(hs_code)
+                                
+                                # Additional debugging
+                                print(f"Entered HS code: {hs_code} into field {field_id}")
+                                time.sleep(1)
+                                
+                                # Check for autocomplete or suggestions after entering HS code
+                                try:
+                                    # Wait for any autocomplete suggestion to appear
+                                    time.sleep(2)
+                                    suggestion_elements = driver.find_elements(By.XPATH, 
+                                        "//div[contains(@class, 'autocomplete') or contains(@class, 'suggestion')]//li | " +
+                                        "//ul[contains(@class, 'autocomplete') or contains(@class, 'suggestion')]//li"
+                                    )
+                                    
+                                    if suggestion_elements:
+                                        for suggestion in suggestion_elements:
+                                            if suggestion.is_displayed() and hs_code in suggestion.text:
+                                                print(f"Clicking autocomplete suggestion: {suggestion.text}")
+                                                driver.execute_script("arguments[0].click();", suggestion)
+                                                break
+                                except Exception as auto_error:
+                                    print(f"Error handling HS code autocomplete: {str(auto_error)}")
+                            else:
+                                print("No HS code field found - this might be an issue with the site structure")
+                            
+                            # Select or input country
+                            if country_selects:
+                                # If dropdown, select Brazil
+                                country_select = country_selects[0]
+                                print(f"Found country dropdown: {country_select.get_attribute('id') or country_select.get_attribute('name')}")
+                                select = Select(country_select)
+                                
+                                # Try selecting by visible text
+                                try:
+                                    select.select_by_visible_text(country)
+                                    print(f"Selected {country} from dropdown")
+                                except Exception as dropdown_error:
+                                    print(f"Couldn't select by text: {str(dropdown_error)}")
+                                    
+                                    # Try with different case or partial match
+                                    try:
+                                        options = [option.text for option in select.options]
+                                        for option in options:
+                                            if country.lower() in option.lower():
+                                                print(f"Found matching option: {option}")
+                                                select.select_by_visible_text(option)
+                                                break
+                                    except Exception as e:
+                                        print(f"Error with partial match selection: {str(e)}")
+                                        
+                                        # Last attempt: try to select Brazil by index or value
+                                        try:
+                                            # Look for values containing "BR" or "BRA" (country codes for Brazil)
+                                            brazil_options = []
+                                            for i, option in enumerate(select.options):
+                                                value = option.get_attribute("value")
+                                                if value and ("BR" in value or "BRA" in value or "brazil" in value.lower()):
+                                                    brazil_options.append((i, option))
+                                                    
+                                            if brazil_options:
+                                                idx, option = brazil_options[0]
+                                                print(f"Found Brazil by code at index {idx}: {option.text}")
+                                                select.select_by_index(idx)
+                                            else:
+                                                # Last resort: use JavaScript to set the value
+                                                print("Using JavaScript to set dropdown value")
+                                                driver.execute_script(
+                                                    "arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('change'));", 
+                                                    country_select, 
+                                                    "BR"  # Common value for Brazil
+                                                )
+                                        except Exception as js_error:
+                                            print(f"All dropdown selection methods failed: {str(js_error)}")
+                                time.sleep(1)
+                            elif country_fields:
+                                country_field = country_fields[0]
+                                print(f"Found country field: {country_field.get_attribute('id') or country_field.get_attribute('name')}")
+                                driver.execute_script("arguments[0].scrollIntoView(true);", country_field)
+                                country_field.clear()
+                                country_field.send_keys(country)
+                                time.sleep(1)
+                                
+                                # Look for autocomplete suggestions after typing
+                                try:
+                                    # Wait for autocomplete suggestions to appear
+                                    time.sleep(2)
+                                    
+                                    # Look for visible autocomplete suggestions
+                                    autocomplete_items = driver.find_elements(By.XPATH, 
+                                        "//div[contains(@class, 'autocomplete') or contains(@class, 'dropdown') or contains(@class, 'suggestion')]//li | " +
+                                        "//ul[contains(@class, 'autocomplete') or contains(@class, 'dropdown') or contains(@class, 'suggestion')]//li"
+                                    )
+                                    
+                                    if autocomplete_items:
+                                        for item in autocomplete_items:
+                                            if item.is_displayed() and country.lower() in item.text.lower():
+                                                print(f"Clicking autocomplete suggestion: {item.text}")
+                                                driver.execute_script("arguments[0].click();", item)
+                                                time.sleep(1)
+                                                break
+                                except Exception as auto_error:
+                                    print(f"Error handling autocomplete: {str(auto_error)}")
+                            else:
+                                # If no specific country field found, look for any likely fields
+                                print("No standard country field found, looking for alternatives")
+                                
+                                # Look for any inputs or spans that might be a country selector
+                                country_elements = driver.find_elements(By.XPATH, 
+                                    "//input[contains(@placeholder, 'country') or contains(@placeholder, 'dest')] | " +
+                                    "//span[contains(text(), 'Country') or contains(text(), 'Destination')]/following-sibling::*[1]"
+                                )
+                                
+                                if country_elements:
+                                    elem = country_elements[0]
+                                    print(f"Found potential country element: {elem.tag_name}")
+                                    
+                                    if elem.tag_name == "input":
+                                        elem.clear()
+                                        elem.send_keys(country)
+                                    elif elem.is_displayed() and elem.is_enabled():
+                                        driver.execute_script("arguments[0].click();", elem)
+                                        time.sleep(1)
+                                        
+                                        # After clicking, look for a dropdown or input
+                                        dropdown_options = driver.find_elements(By.XPATH, "//li[contains(text(), 'Brazil')]")
+                                        for option in dropdown_options:
+                                            if option.is_displayed():
+                                                driver.execute_script("arguments[0].click();", option)
+                                                break
+                                else:
+                                    print("No country field found")
+                            
+                            # Look for search/submit buttons
+                            search_buttons = driver.find_elements(By.XPATH, "//button[contains(text(), 'Search') or contains(@value, 'Search')] | //input[@type='submit' or @type='button'][contains(@value, 'Search')]")
+                            if not search_buttons:
+                                # Look for any button that might be for searching
+                                search_buttons = driver.find_elements(By.XPATH, "//button | //input[@type='submit' or @type='button']")
+                            
+                            # Click search button
+                            if search_buttons:
+                                for button in search_buttons:
+                                    if button.is_displayed() and button.is_enabled():
+                                        print(f"Clicking search button: {button.text or button.get_attribute('value')}")
+                                        driver.execute_script("arguments[0].click();", button)
+                                        time.sleep(5)
+                                        break
+                            else:
+                                # If no button found, try pressing Enter in the last field used
+                                print("No search button found, trying Enter key")
+                                if country_fields:
+                                    country_fields[0].send_keys(Keys.ENTER)
+                                elif hs_code_fields:
+                                    hs_code_fields[0].send_keys(Keys.ENTER)
+                                time.sleep(5)
+                            
+                            # Extract and display the duty rate information
+                            print("\nSearching for duty rate information in page...\n")
+                            duty_rate_found = False
+                            
+                            # Special handling for customsinfo.com
+                            if "customsinfo.com" in driver.current_url:
+                                print("Using specialized extraction for customsinfo.com")
+                                
+                                # Look for result grid or data table
+                                try:
+                                    # First look for elements with ID that might indicate results
+                                    results_container = None
+                                    
+                                    # Try specific element IDs that might contain results
+                                    container_candidates = driver.find_elements(By.XPATH, 
+                                        "//*[@id='pnlGridView' or @id='gvSearchResults' or @id='resultGrid' or @id='dutyRates']"
+                                    )
+                                    
+                                    if container_candidates:
+                                        results_container = container_candidates[0]
+                                        print(f"Found results container with ID: {results_container.get_attribute('id')}")
+                                    else:
+                                        # Try to find tables that appear after search
+                                        result_tables = driver.find_elements(By.TAG_NAME, "table")
+                                        if result_tables:
+                                            # Sort tables by size (number of rows) - larger tables likely contain results
+                                            tables_with_rows = []
+                                            for table in result_tables:
+                                                try:
+                                                    rows = table.find_elements(By.TAG_NAME, "tr")
+                                                    if len(rows) > 1:  # Ignore tables with just headers
+                                                        tables_with_rows.append((table, len(rows)))
+                                                except:
+                                                    pass
+                                            
+                                            # Sort by row count (descending)
+                                            tables_with_rows.sort(key=lambda x: x[1], reverse=True)
+                                            
+                                            if tables_with_rows:
+                                                results_container = tables_with_rows[0][0]
+                                                print(f"Selected largest table with {tables_with_rows[0][1]} rows as results container")
+                                                
+                                    # Process the results container if found
+                                    if results_container:
+                                        # Extract all text and look for patterns indicating duty rates
+                                        container_text = results_container.text.lower()
+                                        
+                                        # Common patterns for duty rates
+                                        duty_rate_patterns = [
+                                            r'(?:duty|tariff)\s*(?:rate)?:?\s*(\d+\.?\d*\s*%)',  # matches "Duty rate: 10%" or "Tariff: 15.5%"
+                                            r'(?:duty|tariff)\s*(?:rate)?:?\s*(\d+\.?\d*)',      # matches "Duty rate: 10" or "Tariff: 15.5"
+                                            r'(\d+\.?\d*\s*%)(?:\s*duty|\s*tariff)',             # matches "10% duty" or "15.5% tariff"
+                                        ]
+                                        
+                                        import re
+                                        for pattern in duty_rate_patterns:
+                                            matches = re.findall(pattern, container_text)
+                                            if matches:
+                                                for match in matches:
+                                                    print(f"🌟 Found duty rate: {match.strip()}")
+                                                    duty_rate_found = True
+                                        
+                                        # If no specific rate pattern found, print relevant sections
+                                        if not duty_rate_found:
+                                            # Print relevant sections with duty/tariff/rate keywords
+                                            sections = container_text.split('\n')
+                                            for section in sections:
+                                                if any(keyword in section for keyword in ['duty', 'tariff', 'rate', 'tax', 'percentage']):
+                                                    print(f"Potential duty info: {section.strip()}")
+                                                    duty_rate_found = True
+                                                    
+                                        # If still nothing found, print the entire container text
+                                        if not duty_rate_found and len(container_text) < 500:  # Limit to prevent extremely long output
+                                            print(f"Results container contents:\n{container_text}")
+                                            duty_rate_found = True
+                                except Exception as e:
+                                    print(f"Error in customsinfo.com specific extraction: {str(e)}")
+                            
+                            # General approach for all sites - look for tables with duty information
+                            if not duty_rate_found:
+                                print("Looking for tables with duty rate information...")
+                                tables = driver.find_elements(By.TAG_NAME, "table")
+                                
+                                for table in tables:
+                                    try:
+                                        # Check if the table has headers first
+                                        headers = table.find_elements(By.TAG_NAME, "th")
+                                        header_text = " ".join([h.text for h in headers]).lower()
+                                        
+                                        # If headers contain relevant keywords, this is likely our table
+                                        if any(keyword in header_text for keyword in ['duty', 'tariff', 'rate', 'tax', 'charge']):
+                                            print("Found table with relevant headers:")
+                                            print(f"Headers: {header_text}")
+                                            
+                                            # Extract all rows
+                                            rows = table.find_elements(By.TAG_NAME, "tr")
+                                            for row in rows:
+                                                cells = row.find_elements(By.TAG_NAME, "td")
+                                                if cells:
+                                                    row_text = " ".join([cell.text for cell in cells])
+                                                    print(f"Row data: {row_text}")
+                                                    
+                                                    # Look for percentage values which likely indicate rates
+                                                    import re
+                                                    percentages = re.findall(r'\d+\.?\d*\s*%', row_text)
+                                                    if percentages:
+                                                        print(f"🌟 Found percentage values: {', '.join(percentages)}")
+                                                    
+                                                    duty_rate_found = True
+                                        else:
+                                            # Check individual rows for duty rate information
+                                            rows = table.find_elements(By.TAG_NAME, "tr")
+                                            for row in rows:
+                                                cells = row.find_elements(By.TAG_NAME, "td")
+                                                row_text = " ".join([cell.text for cell in cells]).lower()
+                                                if any(keyword in row_text for keyword in ['duty', 'tariff', 'rate', 'tax', 'import charge', 'percentage']):
+                                                    print(f"Found potential duty rate information: {row_text}")
+                                                    
+                                                    # Extract percentage values
+                                                    import re
+                                                    percentages = re.findall(r'\d+\.?\d*\s*%', row_text)
+                                                    if percentages:
+                                                        print(f"🌟 Found percentage values: {', '.join(percentages)}")
+                                                    
+                                                    duty_rate_found = True
+                                    except Exception as e:
+                                        print(f"Error processing table: {str(e)}")
+                            
+                            # If no data in tables, look for any text elements with duty information
+                            if not duty_rate_found:
+                                print("Looking for any text elements with duty rate information...")
+                                duty_texts = driver.find_elements(By.XPATH, 
+                                    "//*[contains(text(), 'duty') or contains(text(), 'Duty') or " +
+                                    "contains(text(), 'rate') or contains(text(), 'Rate') or " + 
+                                    "contains(text(), 'tariff') or contains(text(), 'Tariff') or " +
+                                    "contains(text(), 'tax') or contains(text(), 'Tax')]"
+                                )
+                                
+                                for text_elem in duty_texts:
+                                    if text_elem.is_displayed():
+                                        elem_text = text_elem.text.strip()
+                                        if elem_text and len(elem_text) > 3:  # Avoid empty or very short texts
+                                            print(f"Found text with duty/rate information: {elem_text}")
+                                            
+                                            # Look for percentage values which likely indicate rates
+                                            import re
+                                            percentages = re.findall(r'\d+\.?\d*\s*%', elem_text)
+                                            if percentages:
+                                                print(f"🌟 Found percentage values: {', '.join(percentages)}")
+                                                
+                                            duty_rate_found = True
+                            
+                            # Look for labels/divs that are near percentage values
+                            if not duty_rate_found:
+                                print("Looking for percentage values that might indicate duty rates...")
+                                try:
+                                    # Find elements containing percentage symbols
+                                    percentage_elements = driver.find_elements(By.XPATH, "//*[contains(text(), '%')]")
+                                    for elem in percentage_elements:
+                                        if elem.is_displayed():
+                                            print(f"Found element with percentage: {elem.text}")
+                                            duty_rate_found = True
+                                except Exception as e:
+                                    print(f"Error finding percentage elements: {str(e)}")
+                            
+                            # If all extraction methods failed
+                            if not duty_rate_found:
+                                print("Could not find specific duty rate information on the page.")
+                                print("Taking screenshot of current page for manual analysis...")
+                                try:
+                                    driver.save_screenshot("/tmp/duty_rate_page.png")
+                                    print("Screenshot saved to /tmp/duty_rate_page.png")
+                                except Exception as ss_error:
+                                    print(f"Error saving screenshot: {str(ss_error)}")
+                                
+                                # Get page source for offline analysis
+                                try:
+                                    with open("/tmp/page_source.html", "w") as f:
+                                        f.write(driver.page_source)
+                                    print("Page source saved to /tmp/page_source.html for offline analysis")
+                                except Exception as ps_error:
+                                    print(f"Error saving page source: {str(ps_error)}")
+                    except Exception as e:
+                        print(f"Error searching for duty rate: {str(e)}")
             except Exception as e:
                 print(f"Error during login: {str(e)}")
             
-            # Let's just wait to examine the state
+            # Let's wait to examine the state
             time.sleep(5)
         else:
             # Regular agent execution
