@@ -34,6 +34,30 @@ class Browser:
         options.add_argument("--disable-gpu")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
+        
+        # Set binary location to fix ChromeDriver issue
+        import shutil
+        import os
+
+        # Check for available browsers
+        browsers = ['chromium-browser', 'chromium', 'google-chrome', 'chrome', 'firefox', 'firefox-esr']
+        print("Checking for browser paths:")
+        for browser in browsers:
+            path = shutil.which(browser)
+            if path:
+                print(f"Found {browser} at: {path}")
+        
+        # Look for Firefox installations first (which should work on Ubuntu)
+        if shutil.which('firefox-esr') or shutil.which('firefox'):
+            print("Using Firefox as Chrome alternative")
+            # We can't directly use Firefox with undetected_chromedriver, so let's avoid setting binary_location
+        else:
+            # Try to find any Chrome-compatible browser
+            chrome_path = shutil.which('chromium-browser') or shutil.which('chromium') or shutil.which('google-chrome') or shutil.which('chrome')
+            if chrome_path:
+                print(f"Using Chrome binary at: {chrome_path}")
+                options.binary_location = chrome_path
+            
         self.driver = uc.Chrome(options=options)
         self.wait_time = 10  # increased wait time for better page loading
 
