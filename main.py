@@ -1257,104 +1257,104 @@ if __name__ == "__main__":
                             
                             # Generic data extraction for duty/tariff sites
                             print("Using intelligent data extraction for duty/tariff information")
-                                
+                            
                             # Common structure across tariff lookup sites:
                             # 1. First search for a product code and get results with description
                             # 2. Often need to access specific tabs or sections (Duties, Tariffs, Taxes)
                             # 3. May need to select or filter by country
+                            
+                            try:
+                                # First, take screenshots for debugging
+                                screenshot_path = "/tmp/screenshot.png"
+                                driver.save_screenshot(screenshot_path)
+                                print(f"Screenshot saved to {screenshot_path}")
                                 
+                                # Check if we're on the Global Tariff page or need to navigate to it
+                                if "GlobalTariffs" not in driver.current_url:
+                                    global_tariff_links = driver.find_elements(By.XPATH, 
+                                        "//a[contains(@href, 'GlobalTariffs') or contains(text(), 'Global Tariff') or contains(text(), 'Tariff')]"
+                                    )
+                                    if global_tariff_links:
+                                        for link in global_tariff_links:
+                                            if link.is_displayed():
+                                                print(f"Clicking link to Global Tariffs: {link.text}")
+                                                driver.execute_script("arguments[0].click();", link)
+                                                time.sleep(3)
+                                                break
+                                    
+                                # Now look for the search field on the Global Tariffs page
                                 try:
-                                    # First, take screenshots for debugging
-                                    screenshot_path = "/tmp/screenshot.png"
-                                    driver.save_screenshot(screenshot_path)
-                                    print(f"Screenshot saved to {screenshot_path}")
+                                    # Try specific known field IDs for customsinfo.com
+                                    search_field = driver.find_element(By.ID, "txtSearchCode")
+                                    
+                                    # Need to check if search field is in an iframe
+                                    iframes = driver.find_elements(By.TAG_NAME, "iframe")
+                                    if iframes:
+                                        for iframe in iframes:
+                                            try:
+                                                driver.switch_to.frame(iframe)
+                                                search_fields = driver.find_elements(By.ID, "txtSearchCode")
+                                                if search_fields and search_fields[0].is_displayed():
+                                                    search_field = search_fields[0]
+                                                    break
+                                                driver.switch_to.default_content()
+                                            except:
+                                                driver.switch_to.default_content()
+                                    
+                                    # Ensure the field is interactable
+                                    driver.execute_script(
+                                        "arguments[0].style.display = 'block'; " +
+                                        "arguments[0].style.visibility = 'visible'; " +
+                                        "arguments[0].disabled = false; " +
+                                        "arguments[0].readOnly = false;", 
+                                        search_field
+                                    )
+                                    
+                                    # Enter the HS code using JavaScript
+                                    driver.execute_script("arguments[0].value = arguments[1];", search_field, hs_code)
+                                    print(f"Set HS code using JavaScript: {hs_code}")
+                                    
+                                    # Find and click the search button
+                                    search_button = driver.find_element(By.ID, "btnSearch")
+                                    driver.execute_script("arguments[0].click();", search_button)
+                                    print("Clicked search button")
+                                    time.sleep(5)
+                                except Exception as search_error:
+                                    print(f"Error during search: {str(search_error)}")
+                                    
+                                # First check if we found the HS code
+                                hs_code_found = False
                                 
-                                    # Check if we're on the Global Tariff page or need to navigate to it
-                                    if "GlobalTariffs" not in driver.current_url:
-                                        global_tariff_links = driver.find_elements(By.XPATH, 
-                                            "//a[contains(@href, 'GlobalTariffs') or contains(text(), 'Global Tariff') or contains(text(), 'Tariff')]"
-                                        )
-                                        if global_tariff_links:
-                                            for link in global_tariff_links:
-                                                if link.is_displayed():
-                                                    print(f"Clicking link to Global Tariffs: {link.text}")
-                                                    driver.execute_script("arguments[0].click();", link)
-                                                    time.sleep(3)
-                                                    break
+                                # Look for result tables with the HS code
+                                result_tables = driver.find_elements(By.XPATH, "//table[.//td[contains(text(), '" + hs_code + "')]]")
+                                if not result_tables:
+                                    # Try with just the beginning of the HS code 
+                                    code_prefix = hs_code[:6] if len(hs_code) > 6 else hs_code
+                                    result_tables = driver.find_elements(By.XPATH, f"//table[.//td[contains(text(), '{code_prefix}')]]")
+                                
+                                if result_tables:
+                                    hs_code_found = True
+                                    print("Found HS code in search results")
                                     
-                                    # Now look for the search field on the Global Tariffs page
-                                    try:
-                                        # Try specific known field IDs for customsinfo.com
-                                        search_field = driver.find_element(By.ID, "txtSearchCode")
-                                        
-                                        # Need to check if search field is in an iframe
-                                        iframes = driver.find_elements(By.TAG_NAME, "iframe")
-                                        if iframes:
-                                            for iframe in iframes:
-                                                try:
-                                                    driver.switch_to.frame(iframe)
-                                                    search_fields = driver.find_elements(By.ID, "txtSearchCode")
-                                                    if search_fields and search_fields[0].is_displayed():
-                                                        search_field = search_fields[0]
-                                                        break
-                                                    driver.switch_to.default_content()
-                                                except:
-                                                    driver.switch_to.default_content()
-                                        
-                                        # Ensure the field is interactable
-                                        driver.execute_script(
-                                            "arguments[0].style.display = 'block'; " +
-                                            "arguments[0].style.visibility = 'visible'; " +
-                                            "arguments[0].disabled = false; " +
-                                            "arguments[0].readOnly = false;", 
-                                            search_field
-                                        )
-                                        
-                                        # Enter the HS code using JavaScript
-                                        driver.execute_script("arguments[0].value = arguments[1];", search_field, hs_code)
-                                        print(f"Set HS code using JavaScript: {hs_code}")
-                                        
-                                        # Find and click the search button
-                                        search_button = driver.find_element(By.ID, "btnSearch")
-                                        driver.execute_script("arguments[0].click();", search_button)
-                                        print("Clicked search button")
-                                        time.sleep(5)
-                                    except Exception as search_error:
-                                        print(f"Error during search: {str(search_error)}")
+                                    # Try to click on the HS code to open details if it's a link
+                                    hs_code_links = driver.find_elements(By.XPATH, f"//a[contains(text(), '{hs_code}')]")
+                                    if hs_code_links:
+                                        for link in hs_code_links:
+                                            if link.is_displayed():
+                                                print(f"Clicking HS code link: {link.text}")
+                                                driver.execute_script("arguments[0].click();", link)
+                                                time.sleep(3)
+                                                break
                                     
-                                    # First check if we found the HS code
-                                    hs_code_found = False
-                                    
-                                    # Look for result tables with the HS code
-                                    result_tables = driver.find_elements(By.XPATH, "//table[.//td[contains(text(), '" + hs_code + "')]]")
-                                    if not result_tables:
-                                        # Try with just the beginning of the HS code 
-                                        code_prefix = hs_code[:6] if len(hs_code) > 6 else hs_code
-                                        result_tables = driver.find_elements(By.XPATH, f"//table[.//td[contains(text(), '{code_prefix}')]]")
-                                    
-                                    if result_tables:
-                                        hs_code_found = True
-                                        print("Found HS code in search results")
-                                        
-                                        # Try to click on the HS code to open details if it's a link
-                                        hs_code_links = driver.find_elements(By.XPATH, f"//a[contains(text(), '{hs_code}')]")
-                                        if hs_code_links:
-                                            for link in hs_code_links:
-                                                if link.is_displayed():
-                                                    print(f"Clicking HS code link: {link.text}")
-                                                    driver.execute_script("arguments[0].click();", link)
-                                                    time.sleep(3)
-                                                    break
-                                        
-                                        for table in result_tables:
-                                            print("Found table with HS code information:")
-                                            rows = table.find_elements(By.TAG_NAME, "tr")
-                                            for row in rows:
-                                                cells = row.find_elements(By.TAG_NAME, "td")
-                                                if cells:
-                                                    row_text = " ".join([cell.text for cell in cells])
-                                                    print(f"HS Code info: {row_text}")
-                                                    duty_rate_found = True
+                                    for table in result_tables:
+                                        print("Found table with HS code information:")
+                                        rows = table.find_elements(By.TAG_NAME, "tr")
+                                        for row in rows:
+                                            cells = row.find_elements(By.TAG_NAME, "td")
+                                            if cells:
+                                                row_text = " ".join([cell.text for cell in cells])
+                                                print(f"HS Code info: {row_text}")
+                                                duty_rate_found = True
                                     
                                     # Check if we're in product detail view
                                     # The site shows HS Code hierarchy with specific formatting
