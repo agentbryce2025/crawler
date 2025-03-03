@@ -289,10 +289,10 @@ def fill_every_form_tool(arg: Dict[str, str] = None) -> str:
             bool: True if an image button was found and clicked, False otherwise
         """
         if keywords is None:
-            keywords = ['calc', 'duty', 'tax', 'tariff']
+            keywords = ['submit', 'search', 'continue', 'next', 'go', 'login', 'sign', 'send', 'save', 'update', 'calc', 'apply']
         
         if src_patterns is None:
-            src_patterns = ['globe.gif', 'calc', 'duty']
+            src_patterns = ['button', 'submit', 'search', 'arrow', 'next', 'login']
         
         # Build XPath for alt text keywords
         alt_conditions = " or ".join([
@@ -495,15 +495,24 @@ def fill_every_form_tool(arg: Dict[str, str] = None) -> str:
                 except:
                     pass
             
-            # Special case for customsinfo.com: check if there's a field after an "Email:" label
+            # General approach for finding email fields by nearby labels
             try:
                 # For sites that use table layouts with label in one cell and input in another
-                email_label_fields = driver.find_elements(By.XPATH, "//td[contains(text(), 'Email:')]/following-sibling::td/input")
+                email_label_fields = driver.find_elements(By.XPATH, 
+                    "//td[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'email')]/following-sibling::td/input")
                 email_fields.extend(email_label_fields)
                 
-                # For sites that use label elements
-                labeled_fields = driver.find_elements(By.XPATH, "//label[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'email')]/following-sibling::input")
+                # For sites that use label elements - more general approach for all sites
+                labeled_fields = driver.find_elements(By.XPATH, 
+                    "//label[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'email')]/following-sibling::input | " +
+                    "//label[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'email')]/input")
                 email_fields.extend(labeled_fields)
+                
+                # For accessibility-focused sites that use aria-label
+                aria_fields = driver.find_elements(By.XPATH, 
+                    "//input[contains(translate(@aria-label, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'email') or " +
+                    "contains(translate(@placeholder, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'email')]")
+                email_fields.extend(aria_fields)
                 
                 # For sites that put the label text right before the input
                 text_nodes = driver.find_elements(By.XPATH, "//*[contains(text(), 'Email')]")
@@ -772,17 +781,21 @@ if __name__ == "__main__":
                             time.sleep(5)
                             break
                 
-                # Check for email input fields - we now know customsinfo.com uses an Email: label
-                # Try multiple approaches to finding the email field
+                # Try multiple approaches to finding login fields (email/username)
                 
-                # 1. Look for fields with email in attributes
-                email_fields = driver.find_elements(By.XPATH, "//input[contains(@type, 'email') or contains(@name, 'email') or contains(@id, 'email')]")
+                # 1. Look for fields with email in attributes - standard across most sites
+                email_fields = driver.find_elements(By.XPATH, 
+                    "//input[contains(@type, 'email') or contains(@name, 'email') or contains(@id, 'email')]")
                 
-                # 2. Look for username fields
-                username_fields = driver.find_elements(By.XPATH, "//input[contains(@id, 'username') or contains(@name, 'username')]")
+                # 2. Look for username fields - common on many login forms
+                username_fields = driver.find_elements(By.XPATH, 
+                    "//input[contains(@id, 'username') or contains(@name, 'username') or contains(@placeholder, 'username')]")
                 
-                # 3. Look for fields preceded by an "Email:" label (specific to customsinfo.com)
-                email_label_fields = driver.find_elements(By.XPATH, "//td[contains(text(), 'Email:')]/following-sibling::td/input")
+                # 3. Look for fields preceded by email-related labels - works on sites with various layouts
+                email_label_fields = driver.find_elements(By.XPATH, 
+                    "//td[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'email')]/following-sibling::td/input | " +
+                    "//label[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'email')]/following-sibling::input | " +
+                    "//div[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'email')]/following-sibling::input")
                 
                 # 4. Look for any text input field as a last resort
                 text_fields = driver.find_elements(By.XPATH, "//input[@type='text']")
@@ -821,13 +834,21 @@ if __name__ == "__main__":
                     # 1. Look for Login/Sign in buttons
                     submit_buttons = driver.find_elements(By.XPATH, "//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'sign in') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'login') or contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'submit')]")
                     
-                    # 2. Look for input elements with type="submit" or with "login" value (common pattern)
-                    # This specific XPath handles the customsinfo.com case where there's an input with value="Login"
-                    submit_inputs = driver.find_elements(By.XPATH, "//input[@type='submit' or contains(translate(@value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'login')]")
+                    # 2. Look for input elements with type="submit" or with login-related values (common pattern across sites)
+                    submit_inputs = driver.find_elements(By.XPATH, 
+                        "//input[@type='submit' or " +
+                        "contains(translate(@value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'login') or " +
+                        "contains(translate(@value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'sign in') or " +
+                        "contains(translate(@value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'submit') or " +
+                        "contains(translate(@value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'continue')]")
                     
-                    # Special case for customsinfo.com
-                    if not submit_inputs and "customsinfo.com" in driver.current_url:
-                        submit_inputs = driver.find_elements(By.XPATH, "//input[@value='Login']")
+                    # If no submit inputs found, look for button elements with similar text
+                    if not submit_inputs:
+                        submit_inputs = driver.find_elements(By.XPATH,
+                            "//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'login') or " +
+                            "contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'sign in') or " +
+                            "contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'submit') or " +
+                            "contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'continue')]")
                     
                     # Look for any login-related elements across multiple sites
                     login_elements = driver.find_elements(By.XPATH, 
@@ -1318,17 +1339,17 @@ if __name__ == "__main__":
                                         driver.execute_script("arguments[0].click();", button)
                                         time.sleep(5)
                                         
-                                        # After clicking search, look for any calc duty image buttons like globe.gif
+                                        # After clicking search, look for any action buttons that might appear
                                         time.sleep(2)  # Wait for page to update
                                         
-                                        # Use our helper method to find and click image buttons related to calculating duties
-                                        duty_calc_keywords = ['calc', 'duty', 'tax', 'tariff']
-                                        duty_calc_src_patterns = ['globe.gif', 'calc', 'duty']
+                                        # Use our helper method with general action keywords that would work across sites
+                                        action_keywords = ['view', 'details', 'calc', 'show', 'open', 'more', 'info', 'select', 'next']
+                                        action_src_patterns = ['button', 'arrow', 'view', 'details', 'next']
                                         
                                         find_and_click_image_buttons(
                                             driver, 
-                                            keywords=duty_calc_keywords, 
-                                            src_patterns=duty_calc_src_patterns,
+                                            keywords=action_keywords, 
+                                            src_patterns=action_src_patterns,
                                             wait_time=3
                                         )
                                         break
@@ -1374,8 +1395,23 @@ if __name__ == "__main__":
                                     
                                 # Now look for the search field on the Global Tariffs page
                                 try:
-                                    # Try specific known field IDs for customsinfo.com
-                                    search_field = driver.find_element(By.ID, "txtSearchCode")
+                                    # Try to find search input fields in a general way
+                                    # First look for common product/HS code field patterns
+                                    search_field = None
+                                    search_field_candidates = driver.find_elements(By.XPATH, 
+                                        "//input[contains(@id, 'code') or contains(@name, 'code') or " +
+                                        "contains(@id, 'product') or contains(@name, 'product') or " +
+                                        "contains(@id, 'hs') or contains(@name, 'hs') or " +
+                                        "contains(@placeholder, 'code') or contains(@placeholder, 'product') or " + 
+                                        "contains(@placeholder, 'search')]")
+                                    
+                                    if search_field_candidates:
+                                        search_field = search_field_candidates[0]
+                                    else:
+                                        # Fallback: try to find any text input field
+                                        text_inputs = driver.find_elements(By.XPATH, "//input[@type='text']")
+                                        if text_inputs:
+                                            search_field = text_inputs[0]
                                     
                                     # Need to check if search field is in an iframe
                                     iframes = driver.find_elements(By.TAG_NAME, "iframe")
@@ -1404,22 +1440,48 @@ if __name__ == "__main__":
                                     driver.execute_script("arguments[0].value = arguments[1];", search_field, hs_code)
                                     print(f"Set HS code using JavaScript: {hs_code}")
                                     
-                                    # Find and click the search button
-                                    search_button = driver.find_element(By.ID, "btnSearch")
-                                    driver.execute_script("arguments[0].click();", search_button)
-                                    print("Clicked search button")
+                                    # Find and click the search button in a general way
+                                    search_button = None
                                     
-                                    # After clicking search, look for image buttons (especially for customsinfo.com globe.gif)
+                                    # Try multiple approaches to find a search button
+                                    search_button_candidates = driver.find_elements(By.XPATH,
+                                        "//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'search')] | " +
+                                        "//input[@type='submit' and (contains(@value, 'search') or contains(@value, 'Search'))] | " +
+                                        "//input[@type='button' and (contains(@value, 'search') or contains(@value, 'Search'))] | " + 
+                                        "//a[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'search')] | " +
+                                        "//button[contains(@id, 'search') or contains(@class, 'search')] | " +
+                                        "//input[contains(@id, 'search') or contains(@class, 'search')]")
+                                    
+                                    if search_button_candidates:
+                                        search_button = search_button_candidates[0]
+                                    else:
+                                        # Fallback to any button near the search field
+                                        try:
+                                            # Look for buttons near our search field
+                                            nearby_buttons = search_field.find_elements(By.XPATH, "..//button | ../..//button | ../following::button[1]")
+                                            if nearby_buttons:
+                                                search_button = nearby_buttons[0]
+                                        except:
+                                            pass
+                                    if search_button:
+                                        driver.execute_script("arguments[0].click();", search_button)
+                                        print("Clicked search button")
+                                    else:
+                                        # Try pressing Enter in the search field as a last resort
+                                        search_field.send_keys(Keys.ENTER)
+                                        print("Used Enter key to submit search")
+                                    
+                                    # After clicking search, look for any action buttons that might appear
                                     time.sleep(3)  # Wait for page to update
                                     
-                                    # Use our helper method to find and click image buttons related to calculating duties
-                                    duty_calc_keywords = ['calc', 'duty', 'tax', 'tariff']
-                                    duty_calc_src_patterns = ['globe.gif', 'calc', 'duty']
+                                    # Use our helper method with general action keywords for any site
+                                    action_keywords = ['view', 'details', 'calc', 'show', 'open', 'more', 'info', 'select', 'next', 'continue']
+                                    action_src_patterns = ['button', 'arrow', 'view', 'details', 'next', 'continue']
                                     
                                     find_and_click_image_buttons(
                                         driver, 
-                                        keywords=duty_calc_keywords, 
-                                        src_patterns=duty_calc_src_patterns,
+                                        keywords=action_keywords, 
+                                        src_patterns=action_src_patterns,
                                         wait_time=3
                                     )
                                     time.sleep(5)
@@ -1573,36 +1635,50 @@ if __name__ == "__main__":
                                         
                                         # If no regular button found/clicked, try image buttons
                                         if not button_clicked:
-                                            duty_calc_keywords = ['calc', 'duty', 'tax', 'tariff']
-                                            duty_calc_src_patterns = ['globe.gif', 'calc', 'duty']
+                                            action_keywords = ['view', 'details', 'calc', 'show', 'open', 'more', 'info', 'select', 'next', 'continue', 'proceed']
+                                            action_src_patterns = ['button', 'arrow', 'view', 'details', 'next', 'continue']
                                             
                                             button_clicked = find_and_click_image_buttons(
                                                 driver, 
-                                                keywords=duty_calc_keywords, 
-                                                src_patterns=duty_calc_src_patterns,
+                                                keywords=action_keywords, 
+                                                src_patterns=action_src_patterns,
                                                 wait_time=2
                                             )
                                     
-                                    # Based on our manual site analysis, provide hardcoded information when appropriate
-                                    if hs_code_found or "90181910" in driver.page_source:
-                                        print("\nBased on site analysis for HS code 90181910 (Endoscopy apparatus):")
+                                    # Provide a summary of the general workflow followed
+                                    print("\nGeneral workflow summary:")
+                                    print("1. Logged in to the website using provided credentials")
+                                    print("2. Navigated to the appropriate search page")
+                                    print("3. Entered search criteria including product code and country")
+                                    print("4. Looked for action buttons and relevant data on result pages")
+                                    print("5. Analyzed any tables, percentage values, and tariff information")
                                     
-                                    # Add detailed explanation of the customs info site structure
-                                    print("\nExplanation of export.customsinfo.com structure:")
-                                    print("1. The site requires login with email, which our crawler has successfully handled")
-                                    print("2. After login, we're redirected to the Global Tariffs page")
-                                    print("3. We need to enter the HS code (9018.19.10) in the search field")
-                                    print("4. After searching, we need to find Brazil in the country list")
-                                    print("5. The duty rate information is typically shown in a percentage format")
-                                    print("6. Sometimes we need to click on tabs or expand sections to see the full details")
-                                    print("7. This site's structure can be complex and may require multiple interactions")
-                                print("1. This item falls under Chapter 90: 'Optical, photographic, cinematographic, measuring, checking, precision, medical or surgical instruments and apparatus'")
-                                print("2. Subheading 9018 covers: 'Instruments and appliances used in medical, surgical, dental or veterinary sciences'")
-                                print("3. For Brazil imports, medical equipment like endoscopy apparatus typically has:")
-                                print("   - Import Duty: 0-14% (varies based on specific classification and agreements)")
-                                print("   - IPI (Tax on Industrialized Products): Typically 0-10%")
-                                print("   - PIS/COFINS (Social Integration Program): ~9.25%")
-                                print("4. Special COVID-related duty exemptions may apply to medical equipment")
+                                    # Add information about what was found
+                                    if hs_code:
+                                        print(f"\nSearched for product code: {hs_code}")
+                                    if country:
+                                        print(f"Searched for import country: {country}")
+                                # We'll extract any duty or tax-related information found in the page
+                                try:
+                                    # Look for percentage values which might indicate duty rates
+                                    percentage_pattern = r"(\d+(?:\.\d+)?%)"
+                                    percentages = re.findall(percentage_pattern, driver.page_source)
+                                    if percentages:
+                                        print("\nFound potential duty/tax rates in the content:")
+                                        print(", ".join(list(set(percentages[:5]))))  # Display unique rates, limit to 5
+                                    
+                                    # Look for tables with duty information
+                                    tables = driver.find_elements(By.TAG_NAME, "table")
+                                    if tables:
+                                        print("\nFound tables that might contain duty information")
+                                        
+                                    # Look for any tax or duty terms
+                                    duty_terms = ["duty", "tax", "tariff", "vat", "customs", "levy", "charge", "fee"]
+                                    for term in duty_terms:
+                                        if term in driver.page_source.lower():
+                                            print(f"Found '{term}' references in the content")
+                                except Exception as e:
+                                    print(f"Error analyzing page content: {str(e)}")
                                 duty_rate_found = True
                                     
                                 # Try to extract any duty-related information from the page
