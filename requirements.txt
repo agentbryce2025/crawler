@@ -1,0 +1,11 @@
+duckduckgo_search==7.5.0
+Faker==36.1.1
+langchain-core==0.3.37
+langchain-openai==0.3.3
+langgraph==0.2.74
+langgraph-checkpoint==2.0.16
+pdfplumber==0.11.5
+python-dotenv==1.0.1
+requests==2.32.3
+selenium==4.29.0
+undetected-chromedriver==3.5.5
